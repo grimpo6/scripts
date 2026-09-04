@@ -40,73 +40,10 @@ set -eu
 source .env
 
 INPUT_FILE="membres.csv"
-OUTPUT_FILE="membres_new.csv"
-
-function getAccessToken {
-	access_token=$(cat /tmp/grimpo6/access_token 2>/dev/null || echo "")
-	expires_at=$(cat /tmp/grimpo6/expires_at 2>/dev/null || echo "")
-	refresh_token=$(cat /tmp/grimpo6/refresh_token 2>/dev/null || echo "")
-
-	if [[ -n "$access_token" && $(date +%s) -lt "$expires_at" ]]
-	then
-		echo "$access_token"
-		return
-	elif [[ -n "$refresh_token" ]]
-	then
-		response=$(
-			curl --request POST \
-			     --url https://api.helloasso.com/oauth2/token \
-			     --header 'accept: application/json' \
-			     --header 'content-type: application/json' \
-			     --data "{ "grant_type": "$refresh_token" }"
-		)
-		echo Token refreshed
-	else
-	    if [ "$CLIENT_ID" == "" ] || [ "$CLIENT_SECRET" == "" ]
-	    then
-	        echo "Le client ID ou le client secret est vide." >&2
-	        echo "Génère les sur le site de helloasso.com, et remplace les dans le script." >&2
-	        echo "https://admin.helloasso.com/grimpo6/integrations" >&2
-	        exit 1
-	    fi
-	
-	    response=$(
-	        curl --request POST \
-	        --url https://api.helloasso.com/oauth2/token \
-	        --header 'accept: application/json' \
-	        --header 'content-type: application/x-www-form-urlencoded' \
-	        --data-urlencode grant_type=client_credentials \
-	        --data-urlencode client_id=$CLIENT_ID \
-	        --data-urlencode client_secret=$CLIENT_SECRET
-	    )
-		echo New token generated
-	fi
-
-    access_token=$(echo "$response" | jq -r '.access_token')
-    error_description=$(echo "$response" | jq -r '.error_description')
-    expires_in=$(echo "$response" | jq -r '.expires_in')
-    refresh_token=$(echo "$response" | jq -r '.refresh_token')
-    
-    if [[ "$access_token" == "null" || -z "$access_token" ]]
-    then
-        echo "Erreur lors de la récupération du token: $error_description" >&2
-        exit 1
-    fi
-
-    echo $access_token > /tmp/grimpo6/access_token
-    echo $(($(date +%s) + $expires_in)) > /tmp/grimpo6/expires_at
-    echo $refresh_token > /tmp/grimpo6/refresh_token
-    
-    echo "$access_token"
-}
 
 function initDirectories {
-	# Creation des repertoires temporaires pour stocker les token
-	mkdir -p /tmp/grimpo6
-    # Creation des repertoires contenant les fichiers télécharges
-    mkdir -p ./output/attestations ./output/attestations_enfant ./output/certificats_med ./output/listes
-    # On supprime les fichiers email / liste_poles precedents
-    rm -rf ./output/listes/*
+    rm -rf ./output/listes
+	mkdir -p ./output/listes
 }
 
 function checkInputFile {
@@ -115,67 +52,6 @@ function checkInputFile {
         echo "Le fichier $INPUT_FILE n'est pas présent, renommer le fichier téléchargé depuis HelloAsso !" >&2
         exit 1
     fi
-}
-
-function validateEntry {
-    champ=("$@")
-
-    inscription_parent="${champ[43]}"
-    formation_parent="${champ[44]}"
-    pole_parent="${champ[45]}"
-
-    # On cherche des Warnings (a completer pour d'autres (enfant sans parent ar exemple ...))
-    if [[ "$inscription_parent" == "Non" || "$formation_parent" == "Non" || "$pole_parent" == "Non" ]]
-    then
-        echo -e "\n \n /!\ Attention : inscription enfant, le parent a répondu Non à une des questions (formation, inscription ou Pole) ligne $((ligne + 1)) ! \n" >&2
-        champ[2]="/!\ Vérifier l'engagement des parents"
-    fi
-
-    email=$(echo "${champ[21]}" | xargs)
-    tarif=$(echo "${champ[11]}" | xargs | xargs) # "Inscriptions Enfant - Créneaux Vendredi" | "Inscriptions Enfant - Créneaux Mardi" | "Inscriptions ADULTES Grimpo6" | "Inscription Parent" | "Inscriptions Enfant - Créneaux NON ENCADRÉS"
-
-    if [[ "$email" == "" && ( "$tarif" == "Inscriptions ADULTES Grimpo6" ) ]]
-    then
-        echo -e "\n \n /!\ Attention : Champ email non renseigné ligne $((ligne + 1)) ! \n" >&2
-        champ[2]="/!\ Vérifier l'email de la personne"
-    fi
-}
-
-function downloadDocument {
-    url=$1
-    repertoire=$2
-    nom_base=$3
-    
-
-    # Early return si l'url est vide
-    if [ "$url" == "" ]
-    then
-        return
-    fi
-
-    chemin="${repertoire}/${nom_base}"
-
-    # Early return si le document est déjà téléchargé
-    for ext in jpg pdf gif png
-    do
-        if [ -f "$chemin.$ext" ]
-        then
-            return
-        fi
-    done
-
-    contentType="$(curl -v --location -H "Authorization: Bearer $ACCESS_TOKEN" "$url" --output "$chemin" 2>&1 | grep -i '< content-type: ' | cut -d ':' -f2 | tr -d '[:space:]')"
-
-    case "$contentType" in
-        "image/jpeg") ext="jpg" ;;
-        "application/pdf") ext="pdf" ;;
-        "image/gif") ext="gif" ;;
-        "image/png") ext="png" ;;
-        *) ext="foo" ;;
-    esac
-
-    # On renomme avec l'extension trouvée
-    mv "$chemin" "$chemin.$ext"
 }
 
 function appendToMailingLists {
@@ -247,77 +123,17 @@ function appendToMailingLists {
     fi
 }
 
-function appendToNewFile {
-    champ=("$@")
-
-    # Remplacer les colonnes dans la ligne du fichier new avec les liens et les nom/prénom/mail sans espace
-    champ[3]="$nom"
-    champ[4]="$prenom"
-    champ[21]=$(echo "${champ[21]}" | xargs)
-    champ[26]="=HYPERLINK(\"$nom_attestation\")"
-    champ[27]="=HYPERLINK(\"$nom_attestation_enfant\")"
-    champ[30]="=HYPERLINK(\"$nom_certif_med\")"
-
-    # Réécrire la ligne complete avec hyperlink locaux dans le nouveau fichier
-    IFS=';' ; echo "${champ[*]}" >> "$OUTPUT_FILE"
-}
-
-function validateParents {
-    echo "Liste des adresses mails de parents d'enfants non présentes dans la liste membres"
-
-    tail -n +2 "$INPUT_FILE" | while IFS=';' read -r -a champ; do
-        nom=$(echo "${champ[3]}" | xargs | xargs )
-        prenom=$(echo "${champ[4]}" | xargs | xargs )
-        tarif=$(echo "${champ[11]}" | xargs | xargs)
-        email_parent_1=$(echo "${champ[39]}" | xargs)
-        email_parent_2=$(echo "${champ[40]}" | xargs)
-
-
-        case $tarif in
-            "Inscriptions Enfant - Créneaux Vendredi")
-                if ! cat output/listes/membres.csv | grep --quiet "$email_parent_1"
-                then
-                    if ! cat output/listes/membres.csv | grep --quiet "$email_parent_2"
-                    then
-                        echo "- $prenom $nom (Vendredi)"
-                        echo "  - $email_parent_1"
-                        echo "  - $email_parent_2"
-                    fi
-                fi
-            ;;
-            "Inscriptions Enfant - Créneaux Mardi")
-                if ! cat output/listes/membres.csv | grep --quiet "$email_parent_1"
-                then
-                    if ! cat output/listes/membres.csv | grep --quiet "$email_parent_2"
-                    then
-                        echo "- $prenom $nom (Mardi)"
-                        echo "  - $email_parent_1"
-                        echo "  - $email_parent_2"
-                    fi
-                fi
-            ;;
-        esac
-    done
-}
-
 initDirectories
-
-ACCESS_TOKEN=$(getAccessToken)
-
-# Télécharge les attestations FSGT et certificats médicaux dans les repertoires ./attestations ./attestations_enfant et ./certificats_med
-# Attestation = si on a répondu NON aux questions, certificat medical si réponse OUI a des questions
+checkInputFile
 
 nb_lignes=$(($(wc -l < "$INPUT_FILE") - 1))
 ligne=0
-
-# Lire nom des colonnes de membres.csv et l'écrire dans le fichier de sortie
-head -n 1 "$INPUT_FILE" > "$OUTPUT_FILE"
 
 # Lire toutes les lignes sauf la premiere
 tail -n +2 "$INPUT_FILE" | while IFS=';' read -r -a champ
 do
     ligne=$((ligne + 1))
-    echo -ne "\rTéléchargement et traitement de $ligne lignes sur $nb_lignes"
+    echo -ne "\rTraitement de $ligne lignes sur $nb_lignes"
 
     email=$(echo "${champ[21]}" | xargs)
 
@@ -348,22 +164,6 @@ do
         fi
     fi
 
-    validateEntry "${champ[@]}"
-
-    # Avec xargs on supprime les espaces et autres en debut/fin lors de la saisie du champ
-    nom=$(echo "${champ[3]}" | xargs | xargs )
-    prenom=$(echo "${champ[4]}" | xargs | xargs )
-
-    # Télécharger attestation / certificats et detection des types de fichier
-    downloadDocument "${champ[26]}" "./output/attestations" "${prenom}_${nom}_attestation"
-    nom_attestation=$(downloadDocument "${champ[26]}" "./output/attestations" "${prenom}_${nom}_attestation")
-    nom_attestation_enfant=$(downloadDocument "${champ[27]}" "./output/attestations_enfant" "${prenom}_${nom}_attestation_enfant")
-    nom_certif_med=$(downloadDocument "${champ[30]}" "./output/certificats_med" "${prenom}_${nom}_certif_med")
-
     appendToMailingLists "${champ[@]}"
-
-    appendToNewFile "${champ[@]}"
 done
 printf "\n"
-
-validateParents
