@@ -1,2 +1,3 @@
-# scripts
-Collection de script pour Grimpo6
+# Scripts
+
+Collection de script pour Grimpo6.

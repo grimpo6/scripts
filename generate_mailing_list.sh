@@ -37,9 +37,6 @@
 
 set -eu
 
-CLIENT_ID="ee8f821cfba142d8ace5afecbd19b29e"
-CLIENT_SECRET="OBIVKnYocDx2kPDX8Ix6OFqhHKBEUflA"
-
 INPUT_FILE="membres.csv"
 OUTPUT_FILE="membres_new.csv"
 
