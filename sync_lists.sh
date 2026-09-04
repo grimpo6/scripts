@@ -75,16 +75,16 @@ for list_file in output/listes/*.csv
 do
     list_name=$(grep "^$(basename "$list_file")=" "lists_map.conf" | cut -d '=' -f2)
 
-    current_subscribers=$(getSubscribers "$list_name" | sort -u)
-    expected_subscribers=$(cat "$list_file" | sort -u)
-
-    echo "- $list_name ($(echo "$expected_subscribers" | wc -l) vs $(echo "$current_subscribers" | wc -l))"
+    current_subscribers=$(getSubscribers "$list_name" | tr '[:upper:]' '[:lower:]' | sort -u)
+    expected_subscribers=$(tr '[:upper:]' '[:lower:]' < "$list_file" | sort -u)
 
 	if [[ $list_name == "" ]]
 	then
-		echo "Aucune liste associée à $(basename $list_file)"
+    	echo "- $list_name - ATTENTION - Aucune liste associée à $list_file"
 		continue
 	fi
+
+    echo "- $list_name ($(echo "$expected_subscribers" | wc -l) vs $(echo "$current_subscribers" | wc -l))"
 
     for email in $expected_subscribers
     do
