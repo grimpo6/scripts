@@ -1,1 +1,11 @@
+# Env files
 .env
+ignore.csv
+fake_new.csv
+fake_old.csv
+switch_mail.csv
+
+# Output files
+membres.csv
+membres_new.csv
+output
