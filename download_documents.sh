@@ -43,63 +43,32 @@ INPUT_FILE="membres.csv"
 OUTPUT_FILE="membres_local.csv"
 
 function getAccessToken {
-	# Creation des repertoires temporaires pour stocker les token
-	mkdir -p /tmp/grimpo6
+    if [ "$CLIENT_ID" == "" ] || [ "$CLIENT_SECRET" == "" ]
+    then
+        echo "Le client ID ou le client secret est vide." >&2
+        echo "Génère les sur le site de helloasso.com, et remplace les dans le fichier .env." >&2
+        echo "https://admin.helloasso.com/grimpo6/integrations" >&2
+        exit 1
+    fi
 
-	access_token=$(cat /tmp/grimpo6/access_token 2>/dev/null || echo "")
-	expires_at=$(cat /tmp/grimpo6/expires_at 2>/dev/null || echo "")
-	refresh_token=$(cat /tmp/grimpo6/refresh_token 2>/dev/null || echo "")
-
-	if [[ -n "$access_token" && $(date +%s) -lt "$expires_at" ]]
-	then
-		echo "$access_token"
-		return
-	elif [[ -n "$refresh_token" ]]
-	then
-		response=$(
-			curl --request POST \
-			     --url https://api.helloasso.com/oauth2/token \
-			     --header 'accept: application/json' \
-			     --header 'content-type: application/json' \
-			     --data "{ 'grant_type': 'refresh_token', 'refresh_token': '$refresh_token' }"
-		)
-		echo Token refreshed >&2
-	else
-	    if [ "$CLIENT_ID" == "" ] || [ "$CLIENT_SECRET" == "" ]
-	    then
-	        echo "Le client ID ou le client secret est vide." >&2
-	        echo "Génère les sur le site de helloasso.com, et remplace les dans le fichier .env." >&2
-	        echo "https://admin.helloasso.com/grimpo6/integrations" >&2
-	        exit 1
-	    fi
-	
-	    response=$(
-	        curl --request POST \
-	        --url https://api.helloasso.com/oauth2/token \
-	        --header 'accept: application/json' \
-	        --header 'content-type: application/x-www-form-urlencoded' \
-	        --data-urlencode grant_type=client_credentials \
-	        --data-urlencode client_id=$CLIENT_ID \
-	        --data-urlencode client_secret=$CLIENT_SECRET
-	    )
-		echo New token generated >&2
-	fi
+    response=$(
+        curl --request POST \
+        --url https://api.helloasso.com/oauth2/token \
+        --header 'accept: application/json' \
+        --header 'content-type: application/x-www-form-urlencoded' \
+        --data-urlencode grant_type=client_credentials \
+        --data-urlencode client_id=$CLIENT_ID \
+        --data-urlencode client_secret=$CLIENT_SECRET
+    )
 
     access_token=$(echo "$response" | jq -r '.access_token')
-    error_description=$(echo "$response" | jq -r '.error_description')
-    expires_in=$(echo "$response" | jq -r '.expires_in')
-    refresh_token=$(echo "$response" | jq -r '.refresh_token')
-    
+
     if [[ "$access_token" == "null" || -z "$access_token" ]]
     then
         echo "Erreur lors de la récupération du token: $error_description" >&2
         exit 1
     fi
 
-    echo $access_token > /tmp/grimpo6/access_token
-    echo $(($(date +%s) + $expires_in)) > /tmp/grimpo6/expires_at
-    echo $refresh_token > /tmp/grimpo6/refresh_token
-    
     echo "$access_token"
 }
 
@@ -161,7 +130,7 @@ function downloadDocument {
     	curl "$url" \
     		-v \
     		--location \
-    		-H "Authorization: Bearer $ACCESS_TOKEN" \
+    		-H "Authorization: Bearer $(getAccessToken)" \
     		--output "$chemin" 2>&1 \
         | grep -i '< content-type: ' | cut -d ':' -f2 | tr -d '[:space:]'
     )"
