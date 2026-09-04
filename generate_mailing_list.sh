@@ -37,6 +37,8 @@
 
 set -eu
 
+source .env
+
 INPUT_FILE="membres.csv"
 OUTPUT_FILE="membres_new.csv"
 
