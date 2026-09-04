@@ -7,5 +7,5 @@ switch_mail.csv
 
 # Output files
 membres.csv
-membres_new.csv
+membres_local.csv
 output
