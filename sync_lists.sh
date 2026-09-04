@@ -71,14 +71,14 @@ function removeSubscriber {
     ovhRequest DELETE "/email/domain/$OVH_DOMAIN/mailingList/$list/subscriber/$email" >> /dev/null
 }
 
-./generate_mailing_list.sh
-
 for list_file in output/listes/*.csv
 do
     list_name=$(grep "^$(basename "$list_file")=" "lists_map.conf" | cut -d '=' -f2)
 
     current_subscribers=$(getSubscribers "$list_name" | sort -u)
     expected_subscribers=$(cat "$list_file" | sort -u)
+
+    echo "- $list_name ($(echo "$expected_subscribers" | wc -l) vs $(echo "$current_subscribers" | wc -l))"
 
 	if [[ $list_name == "" ]]
 	then

@@ -43,6 +43,9 @@ INPUT_FILE="membres.csv"
 OUTPUT_FILE="membres_local.csv"
 
 function getAccessToken {
+	# Creation des repertoires temporaires pour stocker les token
+	mkdir -p /tmp/grimpo6
+
 	access_token=$(cat /tmp/grimpo6/access_token 2>/dev/null || echo "")
 	expires_at=$(cat /tmp/grimpo6/expires_at 2>/dev/null || echo "")
 	refresh_token=$(cat /tmp/grimpo6/refresh_token 2>/dev/null || echo "")
@@ -100,13 +103,6 @@ function getAccessToken {
     echo "$access_token"
 }
 
-function initDirectories {
-	# Creation des repertoires temporaires pour stocker les token
-	mkdir -p /tmp/grimpo6
-    # Creation des repertoires contenant les fichiers télécharges
-    mkdir -p ./output/attestations ./output/attestations_enfant ./output/certificats_med
-}
-
 function checkInputFile {
     if [[ ! -f "$INPUT_FILE" ]]
     then
@@ -143,7 +139,6 @@ function downloadDocument {
     url=$1
     repertoire=$2
     nom_base=$3
-    
 
     # Early return si l'url est vide
     if [ "$url" == "" ]
@@ -162,7 +157,14 @@ function downloadDocument {
         fi
     done
 
-    contentType="$(curl -v --location -H "Authorization: Bearer $ACCESS_TOKEN" "$url" --output "$chemin" 2>&1 | grep -i '< content-type: ' | cut -d ':' -f2 | tr -d '[:space:]')"
+    contentType="$(
+    	curl "$url" \
+    		-v \
+    		--location \
+    		-H "Authorization: Bearer $ACCESS_TOKEN" \
+    		--output "$chemin" 2>&1 \
+        | grep -i '< content-type: ' | cut -d ':' -f2 | tr -d '[:space:]'
+    )"
 
     case "$contentType" in
         "image/jpeg") ext="jpg" ;;
@@ -229,10 +231,12 @@ function validateParents {
     done
 }
 
-initDirectories
+ACCESS_TOKEN=$(getAccessToken)
+
 checkInputFile
 
-ACCESS_TOKEN=$(getAccessToken)
+# Creation des repertoires contenant les fichiers télécharges
+mkdir -p ./output/attestations ./output/attestations_enfant ./output/certificats_med
 
 nb_lignes=$(($(wc -l < "$INPUT_FILE") - 1))
 ligne=0
