@@ -120,7 +120,7 @@ function validateEntry {
 function downloadDocument {
     url=$1
     repertoire=$2
-    nom_base=$3
+    nom_base=$(echo $3 | tr -d '[:space:]' | tr -d '"')
 
     # Early return si l'url est vide
     if [ "$url" == "" ]
