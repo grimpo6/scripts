@@ -156,6 +156,12 @@ function downloadDocument {
         *) ext="foo" ;;
     esac
 
+    if [ "$ext" == "foo" ]
+	then
+		echo -e "\n \n /!\ Attention : type de fichier inconnu pour $url ligne $nom_base ! \n" >&2
+		return
+	fi
+
     # On renomme avec l'extension trouvée
     mv "$chemin" "$chemin.$ext"
 }
